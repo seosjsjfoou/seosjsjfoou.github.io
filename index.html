@@ -8,10 +8,8 @@
 <style>
   body { font-family: sans-serif; text-align: center; padding: 20px; background: #f0f8ff; }
   h1 { color: #4CAF50; margin-bottom: 20px; }
-  /* 오른쪽 위 표시 */
   #balanceContainer { position: absolute; top: 10px; right: 10px; background: #fff; padding: 10px; border-radius: 8px; box-shadow: 0 0 5px #aaa; text-align: right; }
-  #balance { font-size: 1.2em; }
-  #coinAmount { font-size: 1.2em; margin-top: 5px; }
+  #balance, #coinAmount, #avgPrice { font-size: 1.2em; margin-top: 5px; }
   #coinPrice { font-size: 1.2em; margin: 10px 0; }
   button { font-size: 1.2em; padding: 10px 20px; margin: 5px; }
   canvas { max-width: 100%; height: 300px; margin-top: 20px; }
@@ -23,10 +21,10 @@
 
 <h1>농노코인 거래소</h1>
 
-<!-- 오른쪽 위 컨테이너 -->
 <div id="balanceContainer">
   <div id="balance">농노 보유량: 0</div>
   <div id="coinAmount">농노코인 보유량: 0</div>
+  <div id="avgPrice">평균 구매 가격: -</div>
 </div>
 
 <div id="coinPrice">가격: 0 농노</div>
@@ -48,15 +46,41 @@
 let balance = parseFloat(localStorage.getItem("balance")) || 50;
 let coinAmount = parseInt(localStorage.getItem("coinAmount")) || 0;
 let coinPrice = parseFloat(localStorage.getItem("coinPrice")) || 1;
+let totalSpent = parseFloat(localStorage.getItem("totalSpent")) || 0; // 구매 비용 총합
+
+// 마지막 접속 시각
+let lastTime = parseInt(localStorage.getItem("lastTime")) || Date.now();
+
+// 접속하지 않은 시간만큼 가격 변동
+let now = Date.now();
+let deltaSeconds = Math.floor((now - lastTime) / 1000);
+for(let i=0; i<deltaSeconds; i++){
+    let change = (Math.random() - 0.5) * 1;
+    if(coinPrice <= 0.5 && change < 0) change = 0;
+    coinPrice += change;
+    if(coinPrice < 0.1) coinPrice = 0.1;
+    if(coinPrice > 20) coinPrice = 20;
+}
+lastTime = now;
+localStorage.setItem("lastTime", lastTime);
 
 // ===== 화면 업데이트 =====
 function updateDisplay() {
   document.getElementById("balance").innerText = `농노 보유량: ${balance.toFixed(2)}`;
   document.getElementById("coinAmount").innerText = `농노코인 보유량: ${Math.floor(coinAmount)}`;
+  if(coinAmount > 0) {
+    let avgBuyPrice = totalSpent / coinAmount;
+    document.getElementById("avgPrice").innerText = `평균 구매 가격: ${avgBuyPrice.toFixed(2)} 농노`;
+  } else {
+    document.getElementById("avgPrice").innerText = `평균 구매 가격: -`;
+    totalSpent = 0; // 코인 0이면 총 구매 비용도 초기화
+  }
   document.getElementById("coinPrice").innerText = `가격: ${coinPrice.toFixed(2)} 농노`;
+
   localStorage.setItem("balance", balance.toFixed(2));
   localStorage.setItem("coinAmount", Math.floor(coinAmount));
   localStorage.setItem("coinPrice", coinPrice.toFixed(2));
+  localStorage.setItem("totalSpent", totalSpent.toFixed(2));
 }
 
 // ===== Chart.js 초기화 =====
@@ -68,7 +92,7 @@ let priceChart = new Chart(ctx, { type: 'line', data: chartData, options: { resp
 let seconds = 0;
 function fluctuatePrice() {
   let change = (Math.random() - 0.5) * 1;
-  if(coinPrice <= 0.5 && change < 0) change = 0; // 최소값 근처 음수 제한
+  if(coinPrice <= 0.5 && change < 0) change = 0;
   coinPrice += change;
   if(coinPrice < 0.1) coinPrice = 0.1;
   if(coinPrice > 20) coinPrice = 20;
@@ -79,6 +103,8 @@ function fluctuatePrice() {
   chartData.datasets[0].data.push(coinPrice);
   priceChart.update();
   updateDisplay();
+  lastTime = Date.now();
+  localStorage.setItem("lastTime", lastTime);
 }
 setInterval(fluctuatePrice, 1000);
 
@@ -95,6 +121,7 @@ document.getElementById('confirmBuy').onclick = function() {
   if(balance < cost) { alert("농노가 부족합니다!"); return; }
   balance -= cost;
   coinAmount += qty;
+  totalSpent += cost;
   updateDisplay();
   hideQuantityInput();
 };
@@ -105,6 +132,7 @@ document.getElementById('confirmSell').onclick = function() {
   if(coinAmount < qty) { alert("농노코인이 부족합니다!"); return; }
   balance += qty * coinPrice;
   coinAmount -= qty;
+  totalSpent = Math.max(totalSpent - (totalSpent/coinAmount*qty || 0), 0); // 판매 후 총 구매 비용 조정
   updateDisplay();
   hideQuantityInput();
 };
